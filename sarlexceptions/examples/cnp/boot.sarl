@@ -1,0 +1,37 @@
+package newcnp
+
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import java.util.UUID
+
+agent BootAgent {
+
+	uses Lifecycle
+
+	val VALUE = 300; // offerta dell'initiator
+	val MIN_VALUE1 = 700; // valore minimo che per cui i partecipanti fanno un offerta
+	val MIN_VALUE2 = 700;
+	val MIN_VALUE3 = 700;
+	val MIN_VALUE4 = 200;
+	val MIN_VALUE5 = 700;
+
+	val TIME1 = 300; // stime temporale con cui gli agenti svolgeranno il lavoro
+	val TIME2 = 200;
+	val TIME3 = 304;
+	val TIME4 = 199;
+	val TIME5 = 100;
+
+	on Initialize {
+		var spaceId = UUID::randomUUID
+		spawn(Initiator, spaceId, VALUE)
+		spawn(Participant1, spaceId, MIN_VALUE1, TIME1)
+		spawn(Participant1b, spaceId, MIN_VALUE1, TIME1)
+		spawn(Participant2, spaceId, MIN_VALUE2, TIME2) 
+		spawn(Participant3, spaceId, MIN_VALUE3, TIME3) 
+		spawn(Participant4, spaceId, MIN_VALUE4, TIME4) 
+		spawn(Participant5, spaceId, MIN_VALUE5, TIME5)
+		
+		killMe
+	}
+
+}

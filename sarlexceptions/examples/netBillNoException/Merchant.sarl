@@ -1,0 +1,139 @@
+package primenet
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import java.util.UUID
+import io.sarl.api.core.Lifecycle
+import java.util.ArrayList
+import io.sarl.lang.core.Address
+
+
+agent Merchant {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var netspace : OpenEventSpace
+
+	var Customer : Address
+
+	var Name : String
+
+	var Price : String
+
+	var ProductID : String
+
+	var DataList = new ArrayList<String>()
+
+	var OfferList = new ArrayList<String>()
+
+	var TID : String
+
+	var EncriptedProduct = "Encripted Product"
+
+	var EPOID = "Electronic Payment Order ID"
+
+	var K = "chiave K" 
+	
+	var CheckSum = "CheckSum criptografato della merce"
+
+	var Account : String
+
+	var Memo = "memo"
+
+	var Signature : String
+
+	var Wait = true
+
+	var Message = new ArrayList<String>()
+
+	var Min : Integer
+
+	on Initialize {
+		netspace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		netspace.registerStrongParticipant(asEventListener())
+		Price = occurrence.parameters.get(1) as String
+		ProductID = occurrence.parameters.get(2) as String
+		Name = occurrence.parameters.get(3) as String
+		Account = occurrence.parameters.get(4) as String
+		Signature = occurrence.parameters.get(5) as String
+		Min = occurrence.parameters.get(6) as Integer
+	}
+
+	on Richiesta {
+		Customer = occurrence.source
+		TID = "transactionID"
+		DataList = occurrence.index
+		OfferList.add(ProductID)
+		OfferList.add(Price)
+		OfferList.add(DataList.get(2)) // request flag
+		OfferList.add(TID)
+		OfferList.add(Name)
+		info("Commerciante, invia il prezzo. " + OfferList)
+		netspace.emit(new PriceQuote(OfferList))[it == occurrence.source]
+	}
+
+	on GoodRequest {
+		var RequestList = new ArrayList<String>()
+		RequestList = occurrence.index
+		if (RequestList.get(0) == "refuse") {
+			var Price2 = Integer.valueOf(Price)
+			Price2 = Price2 * 90 / 100
+			if (Price2 > Min) {
+				info("Commerciante, invio nuova offerta")
+				Price = String.valueOf(Price2)
+				OfferList.set(1, Price)
+				info("Commerciante, invia il prezzo. " + OfferList)
+				netspace.emit(new PriceQuote(OfferList))[it == occurrence.source]
+			} else {
+				info("Commerciante, la richiesta è stata rifiutata")
+				netspace.emit(new TransactionFailed)
+				killMe
+			}
+		}
+		if (RequestList.get(0) == "accept") {
+			var Prezzo = Integer.valueOf(Price)
+			netspace.emit(new PermissionToProceed)
+			
+		}
+	}
+	
+	on PermissionToProceed{
+			info("Commerciante, la richiesta è stata accettata")
+			var EncriptedList = new ArrayList<String>()
+			EncriptedList.add(EncriptedProduct)
+			EncriptedList.add(CheckSum)
+			EncriptedList.add(EPOID)
+			info("Commerciante, invio merce criptata. " + EncriptedList)
+			netspace.emit(new SendingEncripted(EncriptedList))[it == Customer]				
+	}
+	
+	on ElectronicPaymentOrder {
+		var Epo = new ArrayList<String>()
+		Epo = occurrence.index
+		Epo.add(Account)
+		Epo.add(Memo)
+		Epo.add(K)
+		Epo.add(Signature)
+		info("Commerciante, Approvazione EPO. " + Epo)
+		netspace.emit(new MessageToNetbill(Epo))
+	}
+
+	on AnswerNetbill {
+		Thread.sleep(3000)
+		Message = occurrence.index
+			info("Commerciante, inoltro il messaggio Netbill al Cliente")
+			netspace.emit(new ForwardMessage(Message))
+			killMe	
+	}
+
+	on BalanceUpdate {
+		info("Contocorrente commerciante aggiornato")
+	}	
+
+}

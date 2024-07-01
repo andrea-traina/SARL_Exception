@@ -1,0 +1,192 @@
+package net
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import io.sarl.api.core.ParticipantJoined
+import java.util.ArrayList
+import io.sarl.lang.core.Address
+import java.util.UUID
+import io.sarl.api.core.AgentKilled
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import io.sarl.api.core.Schedules
+
+
+agent Customer {
+
+	uses DefaultContextInteractions, Behaviors, Schedules, Logging, ExternalContextAccess, Lifecycle
+	
+	var Name : String
+	
+	var Merchant : Address 
+
+	var AccountNumber : String
+
+	var netSpace : OpenEventSpace
+	
+	var Credenziali : String
+
+	var PRD : String
+	
+	var Bid : Integer
+	
+	var RequestFlag : String
+	
+	var Epo = new ArrayList<String>()
+
+	var Ecm = new ArrayList<String>()
+
+	var OfferList = new ArrayList<String>()
+
+	var exSpaceNoAgent : ExceptionSpace<NoFourth_Agent>
+
+	var exSpaceNoNetbill : ExceptionSpace<NoNetbill>
+
+	var exSpaceTerminate : ExceptionSpace<Terminate>
+	
+	var EndWait = false
+
+	on Initialize {
+		netSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+
+		netSpace.registerStrongParticipant(asEventListener())
+
+		Credenziali = occurrence.parameters.get(1) as String
+		Ecm.add(Credenziali)
+		
+		PRD = occurrence.parameters.get(2) as String
+		Ecm.add(PRD)
+		
+		Bid = occurrence.parameters.get(3) as Integer
+		//Ecm.add(Bid) offerta opzionale
+		
+		RequestFlag = occurrence.parameters.get(4) as String
+		Ecm.add(RequestFlag)
+		
+		Name = occurrence.parameters.get(5) as String
+		Ecm.add(Name)
+
+		AccountNumber = occurrence.parameters.get(6) as String
+		
+		info("Cliente " + Ecm)
+
+	}
+
+	on ParticipantJoined [(!isFromMe) && (occurrence.spaceID == netSpace.spaceID)] {
+		if (netSpace.getNumberOfStrongParticipants == 4) {
+			Starting
+		}				
+	}
+	val lockObj = new Object
+	def Starting : void {
+		synchronized (lockObj) {
+			if (!EndWait) {
+				EndWait =  true
+				var evt = new Richiesta(Ecm) // cliente invia richiesta
+				evt.source = netSpace.getAddress(getID())
+				netSpace.emit(evt)
+			}
+		}
+	}
+	
+	
+	on PriceQuote {
+		Merchant = occurrence.source
+		OfferList = occurrence.index
+		var Offerta = Integer.valueOf(OfferList.get(1))
+		var response = new ArrayList<String>()
+		 if (Offerta > Bid) {
+		 	info("Cliente, offerta rifiutata")
+			response.add("refuse")
+			response.add(OfferList.get(3))
+			response.add(Name)
+			netSpace.emit(new GoodRequest(response))[it == occurrence.source]
+		 }
+		 else {
+		 	info("Cliente, offerta accettata")
+			response.add("accept")
+			response.add(OfferList.get(3))
+			response.add(Name)
+			info("Cliente, richiede la merce. " + response)
+			netSpace.emit(new GoodRequest(response))[it == occurrence.source]
+			Thread.sleep(10000)
+			info("time is up")
+			killMe
+		}
+	}
+	
+	on SendingEncripted {
+		var data = new ArrayList<String>()
+		var C_PRD = new String(PRD)
+		C_PRD = "Checksum criptografato del PRD"
+
+		var C_Account = new String(AccountNumber)
+		C_Account = "Checksum criptografato dell'account number"
+		
+		data = occurrence.index
+		Epo.add(OfferList.get(0))
+		Epo.add(OfferList.get(1)) 
+		Epo.add(data.get(1)) 
+		Epo.add(C_PRD)
+		Epo.add(C_Account)
+		Epo.add(data.get(2))
+		Epo.add(Name) 
+		Epo.add(OfferList.get(4))
+		Epo.add("parte criptata") 
+		info("Cliente, Signed Electronic Payment Order. " + Epo)
+		netSpace.emit(new ElectronicPaymentOrder(Epo))
+		
+	}
+
+	on ForwardMessage {
+		info("Cliente, messagio Netbill ricevuto")
+		killMe
+	}
+
+	on TransactionFailed {
+		info("Cliente, transazione fallita")
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == NoNetbill] {
+		exSpaceNoNetbill = defaultContext.getSpace(occurrence.id)
+		exSpaceNoNetbill.registerAsHandler(asEventListener)
+		info("Cliente, Registered as handler for absence of Netbill")
+	}	
+	on NoNetbill {
+		info("Cliente, si sconnette")
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == NoFourth_Agent] {
+		exSpaceNoAgent = defaultContext.getSpace(occurrence.id)
+		exSpaceNoAgent.registerAsHandler(asEventListener)
+		info("Cliente, Registered as handler for absence of Fourth Agent")
+		}
+	on NoFourth_Agent {
+		info("Cliente, si sconnette")
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == Terminate] {
+		exSpaceTerminate = defaultContext.getSpace(occurrence.id)
+		exSpaceTerminate.registerAsHandler(asEventListener)
+		info("Cliente, Registered as handler for Terminate")
+		}
+	on Terminate {
+		info("Cliente si sconnette")
+		killMe
+	}
+
+	on NoHandler {
+		killMe
+	}
+}	

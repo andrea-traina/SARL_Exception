@@ -1,0 +1,65 @@
+package it.unito.di.sarlexceptions.examples.treatment
+
+import java.util.ArrayList
+import io.sarl.api.core.Failure
+
+event Complaint {
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event Reassurance {
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+		
+	}
+}
+
+event Prescription {
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i	
+	}
+}
+
+event FilledRx {
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event Checkpoint {
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+event Continue extends Failure {} // Un'altro agente usa un checkpoint per terminare le operazioni
+
+event Remind extends Failure {} // viene rimandato il segnale
+
+event Terminate extends Failure {} // interrompe l'esecuzione
+
+/*
+ * ERRORE DI COMUNICAZIONE
+ * Remind
+ * il messggio viene rispedito
+ * 
+ * ERRORE DI COMUNICAZIONE RIPETUTO
+ * Continue
+ * Un'Altro Agente usa un checkpoint per terminare le operazioni
+ * 
+ * ERROE DI COMUNCAZIONE GRAVE, NON è ARRIVATO IL CHECKPOINT
+ * Terminate
+ * il programma termina
+ *
+ */

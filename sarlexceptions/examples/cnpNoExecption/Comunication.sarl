@@ -1,0 +1,37 @@
+package primecnp
+
+/** 
+ * @author Andrea
+ * 
+ */
+
+event Cfp {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+
+event Propose {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+	
+}
+
+event Reject_Acept_Proposal {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+

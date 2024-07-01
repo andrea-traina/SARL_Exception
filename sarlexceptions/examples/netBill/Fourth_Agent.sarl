@@ -1,0 +1,197 @@
+
+package net
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.UUID
+import io.sarl.lang.core.Address
+import io.sarl.api.core.AgentKilled
+import java.util.ArrayList
+
+
+agent Fourth_Agent {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var netSpace : OpenEventSpace
+		
+	var NetbillAddress : UUID 
+	
+	var Limit : Integer
+	
+	var Checkpoint = new ArrayList<String>()
+	
+	var Check : boolean
+	
+	var Wait : boolean
+	
+	var Murderable : boolean
+		
+	var Message = new ArrayList<String>()
+
+	var exSpaceConfirmation: ExceptionSpace<MoreChecks>
+	
+	var exSpaceTermination : ExceptionSpace<Terminate>
+	
+	var exSpaceCustomerDeath : ExceptionSpace<CustomerDeath>
+	
+	var exSpaceMerchantDeath : ExceptionSpace<MerchantDeath>
+
+	var exSpaceNoNetbill : ExceptionSpace<NoNetbill>
+	
+	var exSpaceFourthAgent : ExceptionSpace<BalanceNotUpdate>
+
+	var exSpaceKillMe : ExceptionSpace<MerchantDeath>
+	
+	
+	on Initialize {
+		netSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		netSpace.registerStrongParticipant(asEventListener())
+		
+		Limit = occurrence.parameters.get(1) as Integer
+		
+		var Check = false
+
+		var Wait = true
+		
+		var Murderable = false
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<MoreChecks>>
+		exSpaceConfirmation = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpaceConfirmation.registerAsRaiser(asEventListener)
+		info("Fourth Agent, Registered as raiser for more checks")
+		emit(new ExceptionSpaceCreated(MoreChecks, exSpaceConfirmation.spaceID.ID))
+
+		val type2 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<Terminate>>
+		exSpaceTermination = defaultContext.getOrCreateSpaceWithID(type2, UUID::randomUUID)
+		exSpaceTermination.registerAsRaiser(asEventListener)
+		info("Fourth Agent, Registered as raiser for terminate")
+		emit(new ExceptionSpaceCreated(Terminate, exSpaceTermination.spaceID.ID))
+	}
+
+	on FourthPart {
+		netSpace.emit(new CallbackAgent)
+	}
+	
+	on Verification {
+		if (occurrence.index > Limit ) {
+			exSpaceConfirmation.raiseException(new MoreChecks(null), ID)
+		}
+		else {
+			netSpace.emit(new PermissionToProceed)[it == occurrence.source]
+			info("Fourth Agent, permesso procedere")
+		}
+//		info("Fourth Agent muore")
+//		  exSpaceCustomerDeath.removeHandler(new CustomerDeath(getID()), ID)
+//		  exSpaceNoNetbill.removeHandler(new NoNetbill(getID()), ID)
+//		  exSpaceMerchantDeath.removeHandler(new MerchantDeath(getID()), ID)
+//		killMe
+	}
+	
+	on NoControl {
+		info("Fourth Agent si sconnette")
+		exSpaceCustomerDeath.removeHandler(new CustomerDeath(getID()), ID)
+		exSpaceNoNetbill.removeHandler(new NoNetbill(getID()), ID)
+		exSpaceMerchantDeath.removeHandler(new MerchantDeath(getID()), ID)
+		killMe
+	}
+
+	on MessageToNetbill {
+		Checkpoint = occurrence.index
+		if (!Check) {
+		Check = true
+		}
+	}
+
+
+	on ExceptionSpaceCreated [occurrence.ex == CustomerDeath] {
+		exSpaceCustomerDeath = defaultContext.getSpace(occurrence.id)
+		exSpaceCustomerDeath.registerAsHandler(asEventListener)
+		info("Fourth Agent, Registered as handler for CustomerDeath")
+	}
+	on CustomerDeath {
+		info("Fourth Agent, si sconette")
+		killMe
+	}
+	
+
+	on ExceptionSpaceCreated [occurrence.ex == NoNetbill] {
+		exSpaceNoNetbill = defaultContext.getSpace(occurrence.id)
+		exSpaceNoNetbill.registerAsHandler(asEventListener)
+		info("Fourth Agent, Registered as handler for absence of Netbill")
+	}
+	on NoNetbill {
+		info("Fourth Agent, si sconette")
+		killMe
+	}
+	
+	
+
+  	on ExceptionSpaceCreated [occurrence.ex == MerchantDeath] {
+ 		emit (new AddressComunication)
+		exSpaceMerchantDeath = defaultContext.getSpace(occurrence.id)
+		exSpaceMerchantDeath.registerAsHandler(asEventListener)
+		info("Fourth Agent, Registered as handler for Merchant death")	
+	} 
+	on MerchantDeath {
+		if (Check) {
+			NetbillAddress = occurrence.source.getID
+			Murderable = true
+			Wait = true
+			val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<BalanceNotUpdate>>
+			exSpaceFourthAgent = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+			exSpaceFourthAgent.registerAsRaiser(asEventListener)
+			info("Fourth Agent, Registered as raiser for balance not update")
+			emit(new ExceptionSpaceCreated(BalanceNotUpdate, exSpaceFourthAgent.spaceID.ID))
+
+			val type2 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<CustomerDeath>>
+			exSpaceCustomerDeath = defaultContext.getOrCreateSpaceWithID(type2, UUID::randomUUID)
+			exSpaceCustomerDeath.registerAsRaiser(asEventListener)
+			info("Fourth Agent, Registered as raiser for customer death")
+			emit(new ExceptionSpaceCreated(CustomerDeath, exSpaceFourthAgent.spaceID.ID))
+
+			netSpace.emit(new MessageToNetbill(Checkpoint)) 	// rifaccio le operazioni con netbill
+			}
+		else {
+			exSpaceTermination.raiseException(new Terminate(null), ID)
+		}
+	}
+
+	on AnswerNetbill {
+		Thread.sleep(3000)
+		Message = occurrence.index
+		if (!Wait) { // attendo che il contocorrente si aggiorni
+			info("Fourth agent, inoltro il messaggio Netbill al Cliente")
+			netSpace.emit(new ForwardMessage(Message))
+			killMe
+		} else {
+			info("Contocorrente commerciante non aggiornato")
+			exSpaceFourthAgent.raiseException(new BalanceNotUpdate(null), ID)		}
+	}
+
+	on BalanceUpdate {
+		Wait = false
+		info("Contocorrente commerciante aggiornato")
+	}	
+
+ 	on AgentKilled {
+		if (Murderable){
+			if (occurrence.source.getID != NetbillAddress) {
+				exSpaceCustomerDeath.raiseException(new CustomerDeath(null), ID)
+				info("Fourth Agent si disconette")
+	 			killMe
+	  		}
+		}
+	}
+	
+}

@@ -1,0 +1,24 @@
+package it.unito.di.sarlexceptions.examples.treatment
+
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import java.util.UUID
+
+agent BootAgent {
+
+	uses Lifecycle
+
+	val sID = "sID key"
+	val symptom = "symptom"
+	val Rx = "Rx"
+
+	on Initialize {
+		var spaceId = UUID::randomUUID
+		spawn(Patient,spaceId,sID,symptom)
+		spawn(Doctor, spaceId,Rx)
+		spawn(Pharmacist, spaceId)
+
+		killMe
+
+	}
+}

@@ -1,0 +1,30 @@
+package primecnp
+
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import java.util.UUID
+
+agent BootAgent {
+
+	uses Lifecycle
+
+	val VALUE = 300;
+	val MIN_VALUE1 = 100;
+	val MIN_VALUE2 = 200;
+	val MIN_VALUE3 = 600;
+
+	val TIME1 = 300;
+	val TIME2 = 200;
+	val TIME3 = 50;
+
+	on Initialize {
+		var spaceId = UUID::randomUUID
+		spawn(Initiator, spaceId, VALUE)
+		spawn(Participant1, spaceId, MIN_VALUE1, TIME1)
+		spawn(Participant2, spaceId, MIN_VALUE2, TIME2)
+		spawn(Participant3, spaceId, MIN_VALUE3, TIME3)
+		
+		killMe
+	}
+
+}

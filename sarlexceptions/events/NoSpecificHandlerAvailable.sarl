@@ -1,0 +1,20 @@
+/** 
+ * 
+ */
+package it.unito.di.sarlexceptions.events
+
+import io.sarl.api.core.Failure
+
+/** 
+ * @author Andrea
+ * 
+ */
+event NoSpecificHandlerAvailable {
+	
+	var ex : Class<? extends Failure>
+	
+	new(ex : Class<? extends Failure>) {
+		this.ex = ex
+	}
+	
+}

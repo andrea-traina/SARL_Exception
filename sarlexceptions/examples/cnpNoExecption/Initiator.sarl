@@ -1,0 +1,138 @@
+package primecnp
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+
+
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+
+import io.sarl.api.core.OpenEventSpaceSpecification
+import io.sarl.api.core.ParticipantJoined
+import io.sarl.lang.core.Address
+import java.util.UUID
+import java.util.ArrayList
+
+
+agent Initiator {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var comspace : OpenEventSpace
+
+	var VALUE : Integer
+	
+	var inTime : Boolean
+	
+	var index : Integer
+	
+	var ListOfferte = new ArrayList<Integer>()
+		
+	var winner : Integer
+	
+	var participants = new ArrayList<Address>()
+
+	var winnerParticipant : Address
+
+	var loserParticipant : Address
+
+	var Cont = true
+
+	on Initialize {
+		comspace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+
+		comspace.registerStrongParticipant(asEventListener())
+
+		VALUE = occurrence.parameters.get(1) as Integer
+		
+		inTime = true
+	}
+
+	on ParticipantJoined [(!isFromMe) && (occurrence.spaceID == comspace.spaceID)] {
+		if (comspace.getNumberOfStrongParticipants == 4) {
+			Starting
+		}
+
+	}
+
+	val lockObj = new Object
+
+	def Starting : void {
+		synchronized (lockObj) {
+			if (Cont) {
+				Cont = false
+				info("Initiator: Trovati partecipanti")
+				info("Initiator: invio richiesta")
+				var evt = new Cfp(VALUE)
+				evt.source = comspace.getAddress(getID())
+				comspace.emit(evt)
+
+				Thread.sleep(6000)
+				info("Initiator: time is up")
+				comspace.emit(new Propose(0)) 
+			}
+		}
+	}
+	
+	
+	
+	
+	on Propose {
+
+
+		if (inTime) {
+			
+			var check = comspace.getAddress(getID())
+			
+			if (occurrence.source == check) {
+								
+				inTime = false
+				
+				if(ListOfferte.size() == 0) {
+					info("non sono arrivate proposte")
+					killMe
+				}
+				else {
+					winner = ListOfferte.get(0)
+					index = 0
+					for(var l = 1; l < ListOfferte.size(); l++){
+						if( ListOfferte.get(l) < winner) {
+							winner = ListOfferte.get(l)
+							index = l	
+						} 
+					}
+						
+					for (var s = 0; s < ListOfferte.size(); s++) {
+						if (s == index) {
+							info("vincitore: " + participants.get(s))
+							info("con una offerta di " + winner)
+							winnerParticipant = participants.get(s)
+							comspace.emit(new Reject_Acept_Proposal(1))[it == winnerParticipant]	
+						}
+						else {
+							loserParticipant = participants.get(s)
+							comspace.emit(new Reject_Acept_Proposal(-1))[it == loserParticipant]
+						}
+						
+					}
+				}				
+				killMe				
+			}	
+			if (occurrence.index > 0) {
+				ListOfferte.add(occurrence.index)
+				participants.add(occurrence.source)		
+			}
+		
+		}
+		
+		else {
+			info("proposta fuori tempo massimo")
+			comspace.emit(new Reject_Acept_Proposal(-1))[it == occurrence.source]
+		}
+		
+	}
+}

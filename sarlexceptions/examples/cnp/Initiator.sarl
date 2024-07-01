@@ -1,0 +1,412 @@
+package newcnp
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import io.sarl.api.core.ParticipantJoined
+import io.sarl.lang.core.Address
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.ArrayList
+import java.util.Arrays
+import java.util.UUID
+import io.sarl.api.core.AgentKilled
+import it.unito.di.sarlexceptions.events.NoSpecificHandlerAvailable
+import it.unito.di.sarlexceptions.events.NoHandlerAvailable
+
+agent Initiator {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var comSpace : OpenEventSpace
+
+	var VALUE : Integer
+
+	var Num_participants : Integer
+	
+	var InTime : Boolean
+	
+	var Index : Integer
+	
+	var ListOffers = new ArrayList<Integer>()
+		
+	var Winner : Integer
+	
+	var Participants = new ArrayList<Address>()
+
+	var WinnerParticipant : Address
+
+	var exSpaceNotUnderstood : ExceptionSpace<NotUnderstood>
+	
+	var exSpaceNotCompleted : ExceptionSpace<NotCompleted>
+
+	var exSpaceNoOffers : ExceptionSpace<NoOffers>
+	
+	var exSpaceTie : ExceptionSpace<Tie>
+
+	var exSpaceNewTie : ExceptionSpace<NewTie>
+	
+	var Counter : Integer
+
+	var Direction : Address	
+
+	var WinnerCount = new ArrayList<Address>()
+
+	var SecondOffers = new ArrayList<Integer>()
+
+	var Re_Participants = new ArrayList<Address>()
+
+    var OtherParticipant = new ArrayList<UUID>()
+	
+	var End : Boolean
+	
+	var LoopRematch : Integer
+
+	var Cont : Boolean
+	
+	var Cont2 = true
+	
+	var FirstTime = true
+	
+	var Running = true
+	
+	var OneTime = true
+
+	on Initialize {
+		comSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+
+		comSpace.registerStrongParticipant(asEventListener())
+
+		VALUE = occurrence.parameters.get(1) as Integer
+		
+		InTime = true
+		
+		Counter = 0
+		
+		LoopRematch = 0
+		
+		End = false
+		
+		Cont = true
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<NoOffers>>
+		exSpaceNoOffers = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpaceNoOffers.registerAsRaiser(asEventListener)
+		info("[Initiator] Registered as riser for NoOffers!")
+		emit(new ExceptionSpaceCreated(NoOffers, exSpaceNoOffers.spaceID.ID))
+
+		val type1 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<Tie>>
+		exSpaceTie = defaultContext.getOrCreateSpaceWithID(type1, UUID::randomUUID)
+		exSpaceTie.registerAsRaiser(asEventListener)
+		info("[Initiator] Registered as riser for Tie!")
+		emit(new ExceptionSpaceCreated(Tie, exSpaceTie.spaceID.ID))
+
+		val type2 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<NewTie>>
+		exSpaceNewTie = defaultContext.getOrCreateSpaceWithID(type2, UUID::randomUUID)
+		exSpaceNewTie.registerAsRaiser(asEventListener)
+		info("[Initiator] Registered as riser for NewTie!")
+		emit(new ExceptionSpaceCreated(NewTie, exSpaceNewTie.spaceID.ID))
+		
+	}
+	
+
+	on ParticipantJoined [(!isFromMe) && (occurrence.spaceID == comSpace.spaceID)] {
+		Num_participants = comSpace.getNumberOfStrongParticipants
+		if (comSpace.getNumberOfStrongParticipants == 7) {
+			Starting
+		}
+				
+	}
+	val lockObj = new Object
+	def Starting : void {
+		synchronized (lockObj) {
+			if (Cont) {
+				Cont = false
+				info("Initiator: Trovati partecipanti")
+				info("Initiator: invio richiesta")
+				var evt = new Cfp(VALUE)
+				evt.source = comSpace.getAddress(getID()) // invio offerta value
+				comSpace.emit(evt)
+
+				Thread.sleep(6000)
+				info("Initiator: time is up")
+				comSpace.emit(new Propose(0)) 	// invio un auto offerta per far finire l'asta
+			}
+		}
+	}
+
+	
+	on Propose { //ricevo offerte dai partcipanti
+
+		if (InTime) { // la proposta è in tempo
+			
+			var check = comSpace.getAddress(getID())
+			
+			if (occurrence.source == check) { // l'offerta è mia, è finita l'asta
+								
+				InTime = false // d'ora in poi le offerte non saranno più valide.
+				
+				emit(new Control)			
+			}	
+			if (occurrence.index > 0) { // inserisco offerta da un partecipante nella lista
+				ListOffers.add(occurrence.index)
+				Participants.add(occurrence.source)
+				}
+			if (occurrence.index < 0) {
+				OtherParticipant.add(occurrence.source.getID)
+			}
+		}		
+		else { // l'offerta è rifiutata
+			info("proposta fuori tempo massimo")
+			OtherParticipant.add(occurrence.source.getID)
+		}
+		
+	}
+	
+	on Control { // cerco l'offerta migliore
+		if (ListOffers.size() == 0) { //se non ci sono offerte dai partecipanti
+			if(FirstTime){
+				FirstTime = false
+				info("Initiator: non sono arrivate proposte")
+				exSpaceNoOffers.raiseException(new NoOffers(null), ID) // devono fare seconda offerta obbligatoria
+			}
+			else {
+				comSpace.emit(new Dismiss)
+				killMe		
+			}
+		
+		}
+		else { // scelgo l'offerta vincente
+			WinnerCount.clear() // svuoto la lista dei migliori offerenti
+			Winner = ListOffers.get(0)
+			Index = 0
+			WinnerCount.add(Participants.get(0))
+			for (var l = 1; l < ListOffers.size(); l++) { //controllo tutte le offerte 
+				if (ListOffers.get(l) < Winner) { // vince l'offerta più bassa
+					Winner = ListOffers.get(l) //salvo l'offerta 
+					Index = l //salvo l'indice del vincitore
+					WinnerCount.clear()// cancello la lista degli offerenti migliori
+					WinnerCount.add(Participants.get(l))// aggiungo alla lista l'offerente migliore
+				}
+				else if (ListOffers.get(l) == Winner){// in caso di pareggio con l'offerta migliore aggiungo l'offerente alla lista
+					WinnerCount.add(Participants.get(l))
+				}
+			}
+			
+			
+			if (WinnerCount.size() == 1) { // c'è solo un offerente che ha fatto la proposta migliore
+				info("vincitore: " + Participants.get(Index))
+				info("con una offerta di " + ListOffers.get(Index))
+				WinnerParticipant = Participants.get(Index)
+				comSpace.emit(new Reject_Acept_Proposal(1))[it == Participants.get(Index)]
+			}
+			else {//più offerenti hanno fatto l'offerta migliore
+				emit(new Draw(WinnerCount))
+			}
+		}
+		
+	}
+	
+	on Draw {
+		var l = 0
+		while (Running && (l < Participants.size())) {// usare Pariticpants invece di occurrence index fa partire l'eccezione per l'assenza di handler
+			Direction = Participants.get(l) // occurrence.index.get(l) //
+			info("pareggio: " + Direction)
+			exSpaceTie.raiseException(new Tie(Direction.getID), ID)
+			l++
+		}
+	}
+	
+	on NoSpecificHandlerAvailable {
+		Running = false
+		Thread.sleep(2000)
+		exSpaceNewTie.raiseException(new NewTie(null), ID)
+		Re_Participants.clear()
+		SecondOffers.clear()
+		Running = true
+	}
+	
+	on Taken_charge {
+		End = true
+		comSpace.emit(new Reject_Acept_Proposal(-1))
+		killMe
+	}
+
+//------------------- agentkilled
+	on AgentKilled {
+		var Stop : Boolean
+		Stop = false
+		if(End == false){
+			info("AgentKilled:" + occurrence.source)
+			for (var l = 0; l < Participants.size(); l++) { //
+				if (Participants.get(l).getID == occurrence.source.getID) {
+					Participants.remove(l)
+					ListOffers.remove(l)
+					Stop = true
+				}	
+			}
+			if(!Stop){
+				for (var l = 0; l < OtherParticipant.size(); l++) { // controllo anche su other
+					if (OtherParticipant.get(l) == occurrence.source.getID) {
+						OtherParticipant.remove(l)
+					}
+				}
+			}
+			Num_participants --
+			if(InTime == false){ // se ho un agente che fallisce prima di inviare un'offerta farebbe partire controllo anzitempo
+				emit(new Control)
+			} 				
+		}
+	}
+
+
+//	-------------------- on newOffer  (consecuzione di NoOffer)
+	on NewOffer {
+		ListOffers.add(occurrence.index)
+		Participants.add(occurrence.source)
+		procede }
+	
+	val lockObj3 = new Object
+
+	def procede : void {
+
+	synchronized (lockObj3) {
+		if(OneTime){
+			info(Participants.size())
+			info(Num_participants - 1)
+			if (Participants.size() == Num_participants-1) {
+				OneTime = false
+				emit(new Control)		
+			}
+			else {
+					info(Participants)
+				}
+		}
+		}
+	}
+	
+
+//------------------------------
+
+	on Rematch {
+		if(Running){
+		info("nuova offerta ricevuta")
+		for(array : WinnerCount) {
+			if (array.getID() == occurrence.source.getID) {
+				Re_Participants.add(occurrence.source)
+				SecondOffers.add(occurrence.index)				
+			}
+		}
+		Thread.sleep(4000)
+		if (Running) {
+			Playoff
+		}
+	}	
+		}
+
+	val lockSecondObj = new Object
+
+	def Playoff : void {
+		synchronized (lockSecondObj) {
+			if (Cont2) {
+				Cont2 = false
+				info("Seconde Offerte :" + SecondOffers)
+				Winner = SecondOffers.get(0) // segno la prima offerta come la migliore
+				Index = 0
+				WinnerCount.clear() // cancello la lista dei vincitori
+				WinnerCount.add(Re_Participants.get(0))
+				for (var l = 1; l < SecondOffers.size(); l++) { // controllo tutte le offerte
+					if (SecondOffers.get(l) == Winner) { // pareggio
+						WinnerCount.add(Re_Participants.get(l))
+					}
+					else if (SecondOffers.get(l) < Winner) { // vince l'offerta più bassa
+						Winner = SecondOffers.get(l) // salvo l'offerta
+						Index = l // salvo l'indice del vincitore
+						WinnerCount.clear() 
+						WinnerCount.add(Re_Participants.get(l)) 		// dopo aver svuotato la lista inserisco la migliore
+					}
+				}
+					
+				if (WinnerCount.size() == 1) {
+					var dim =  Participants.size()
+					
+					info("vincitore: " + Re_Participants.get(Index))
+					info("con una offerta di " + SecondOffers.get(Index))
+					
+					
+					for (var l = 0; l < dim; l++) {
+						if (Participants.get(l).getID == Re_Participants.get(Index).getID) {
+							WinnerParticipant = Participants.get(l)
+						}
+					}
+					comSpace.emit(new Reject_Acept_Proposal(1))[it == WinnerParticipant]	
+				}
+				else {
+					if (LoopRematch < 8) {
+						LoopRematch++
+						Re_Participants.clear()
+						SecondOffers.clear()
+						Cont2 = true
+						emit(new Draw(WinnerCount))
+					}
+					else {
+						info("vincitore: " + Re_Participants.get(0))
+						info("con una offerta di " + SecondOffers.get(0))
+	
+						for (var l = 0; l < Participants.size(); l++) {
+							if (Participants.get(l).getID == Re_Participants.get(0).getID) {
+								WinnerParticipant = Participants.get(l)
+							}
+						}
+						comSpace.emit(new Reject_Acept_Proposal(1))[it == WinnerParticipant]
+						
+					}
+				}
+			}		
+		}
+	}
+	
+//----------------------------------
+
+	on ExceptionSpaceCreated [occurrence.ex == NotUnderstood] {
+		exSpaceNotUnderstood = defaultContext.getSpace(occurrence.id)
+		exSpaceNotUnderstood.registerAsHandler(asEventListener)
+		info("[Initiator] Registered as handler for NotUnderstood!")
+	}
+	on NotUnderstood {
+		info("gestisco NotUnderstood!")
+		comSpace.emit(new Dismiss)[it.getID == occurrence.source.getID]
+		}
+		
+
+//----------------------------
+	on ExceptionSpaceCreated [occurrence.ex == NotCompleted] {
+		exSpaceNotCompleted = defaultContext.getSpace(occurrence.id)
+		exSpaceNotCompleted.registerAsHandler(asEventListener)
+		info("[Initiator] Registered as handler for Not Completed!")
+	}
+	on NotCompleted {
+		info("gestisco not completed")
+		for (var l = 0; l < Participants.size(); l++) { // 
+			if (Participants.get(l).getID == occurrence.source.getID) { // rimuovo l'offerta dalla lista
+				OtherParticipant.add(Participants.get(l).getID)
+				Participants.remove(l)
+				ListOffers.remove(l)
+			}
+		}
+		emit(new Control) 	// rifaccio il controllo, l'agente è stato rimosso dai participants
+	}
+
+	on NoHandlerAvailable {
+		comSpace.emit(new NoHandler)
+		killMe
+	}
+}
+

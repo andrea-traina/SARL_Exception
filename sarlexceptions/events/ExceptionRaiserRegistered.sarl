@@ -1,0 +1,22 @@
+/** 
+ * 
+ */
+package it.unito.di.sarlexceptions.events
+
+import io.sarl.api.core.Failure
+import io.sarl.lang.core.Event
+import java.util.UUID
+
+event ExceptionRaiserRegistered {
+	
+	var ev : Class<? extends Event>
+	var ex : Class<? extends Failure>
+	var id : UUID
+	
+	new(ev : Class<? extends Event>, ex : Class<? extends Failure>, id : UUID) {
+		this.ev = ev
+		this.ex = ex
+		this.id = id
+	}
+	
+}

@@ -1,0 +1,278 @@
+package net
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import java.util.ArrayList
+import io.sarl.lang.core.Address
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.UUID
+import io.sarl.api.core.AgentKilled
+
+agent Merchant {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var netSpace : OpenEventSpace
+	
+	var Customer : Address
+	
+	var Netbill : UUID
+	
+	var NetbillAlive : Boolean
+
+	var FourthAgent : UUID
+	
+	var FourthAlive : Boolean
+	
+	var Name : String
+	
+	var Price : String
+	
+	var ProductID : String
+	
+	var DataList = new ArrayList<String>()
+	
+	var OfferList = new ArrayList<String>()
+	
+	var TID : String
+	
+	var EncriptedProduct = "Encripted Product"
+	
+	var EPOID = "Electronic Payment Order ID"
+
+	var K = "chiave K" 
+	
+	var CheckSum = "CheckSum criptografato della merce"
+	
+	var Account : String
+	
+	var Memo = "memo"
+		
+	var Signature : String
+	
+	var Wait = true
+	
+	var Murderable = true
+
+	var Message = new ArrayList<String>()
+	
+	var Min : Integer
+
+	var exSpaceMerchant : ExceptionSpace<PermissionDenied>
+
+	var exSpaceMerchantChecks : ExceptionSpace<MoreChecks>
+	
+	var exSpaceMerchantBalance : ExceptionSpace<BalanceNotUpdate>
+	
+	var exSpaceCustomerDied : ExceptionSpace<CustomerDeath>
+
+	var exSpaceNoNetbill : ExceptionSpace<NoNetbill>
+	
+	var exSpaceNoAgent : ExceptionSpace<NoFourth_Agent>
+	
+	on Initialize {
+		netSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		netSpace.registerStrongParticipant(asEventListener())
+		Price = occurrence.parameters.get(1) as String
+		ProductID = occurrence.parameters.get(2) as String
+		Name = occurrence.parameters.get(3) as String
+		Account = occurrence.parameters.get(4) as String
+		Signature = occurrence.parameters.get(5) as String
+		Min = occurrence.parameters.get(6) as Integer
+		
+		FourthAlive = true
+		netSpace.emit(new FourthPart)
+		
+		NetbillAlive = true
+		netSpace.emit(new FirstMessage)
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<BalanceNotUpdate>> 
+		exSpaceMerchantBalance = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpaceMerchantBalance.registerAsRaiser(asEventListener)
+		info("Merchant, Registered as raiser for balance not update")
+		emit(new ExceptionSpaceCreated(BalanceNotUpdate, exSpaceMerchantBalance.spaceID.ID))
+
+		val type2 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<CustomerDeath>>
+		exSpaceCustomerDied = defaultContext.getOrCreateSpaceWithID(type2, UUID::randomUUID)
+		exSpaceCustomerDied.registerAsRaiser(asEventListener)
+		info("Merchant, Registered as raiser for death of Customer")
+		emit(new ExceptionSpaceCreated(CustomerDeath, exSpaceCustomerDied.spaceID.ID))
+
+		val type3 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<NoFourth_Agent>>
+		exSpaceNoAgent = defaultContext.getOrCreateSpaceWithID(type3, UUID::randomUUID)
+		exSpaceNoAgent.registerAsRaiser(asEventListener)
+		info("Merchant, Registered as raiser for absence of Fourth Agent")
+		emit(new ExceptionSpaceCreated(NoFourth_Agent, exSpaceNoAgent.spaceID.ID))
+
+		val type4 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<NoNetbill>>
+		exSpaceNoNetbill = defaultContext.getOrCreateSpaceWithID(type4, UUID::randomUUID)
+		exSpaceNoNetbill.registerAsRaiser(asEventListener)
+		info("Merchant, Registered as raiser for absence of Netbill")
+		emit(new ExceptionSpaceCreated(NoNetbill, exSpaceNoNetbill.spaceID.ID))
+
+	}
+		
+	on CallbackAgent {
+		FourthAgent = occurrence.source.getID
+	}
+	
+	on CallbackNetbill {
+		Netbill = occurrence.source.getID
+	}
+		
+	on Richiesta {
+		Customer = occurrence.source
+		TID = "transactionID"
+		DataList = occurrence.index
+		OfferList.add(ProductID)
+		OfferList.add(Price)
+		OfferList.add(DataList.get(2)) //request flag 
+		OfferList.add(TID)
+		OfferList.add(Name)
+		info("Commerciante, invia il prezzo. " + OfferList)
+		netSpace.emit(new PriceQuote(OfferList))[it == occurrence.source]
+	}
+	
+	on GoodRequest {
+		var RequestList = new ArrayList<String>()
+		RequestList = occurrence.index
+		if (RequestList.get(0) == "refuse") {
+			var Price2 = Integer.valueOf(Price)
+			Price2 = Price2 * 90 / 100
+			if (Price2>Min){
+				info("Commerciante, invio nuova offerta")
+				Price = String.valueOf(Price2)
+				OfferList.set(1, Price)
+				info("Commerciante, invia il prezzo. " + OfferList)
+				netSpace.emit(new PriceQuote(OfferList))[it == occurrence.source]
+			}
+			else {
+				info("Commerciante, la richiesta è stata rifiutata")
+				netSpace.emit(new NoControl)
+				netSpace.emit(new TransactionFailed)
+				killMe
+			}
+		}
+		if (RequestList.get(0) == "accept") {
+			var Prezzo = Integer.valueOf(Price)
+			if (Prezzo > 1000) {
+				if(FourthAlive) {
+					info("Commerciante, in attesa di conferma")
+					netSpace.emit(new Verification(Prezzo))
+				}
+				else {
+					exSpaceNoAgent.raiseException(new NoFourth_Agent(null), ID)
+				}
+			}
+			else {
+				netSpace.emit(new PermissionToProceed)
+				//netSpace.emit(new NoControl) //kill del Fourth Agent
+			}
+		}
+	}
+	
+	on PermissionToProceed{
+			info("Commerciante, la richiesta è stata accettata")
+			var EncriptedList = new ArrayList<String>()
+			EncriptedList.add(EncriptedProduct)
+			EncriptedList.add(CheckSum)
+			EncriptedList.add(EPOID)
+			info("Commerciante, invio merce criptata. " + EncriptedList)
+			netSpace.emit(new SendingEncripted(EncriptedList))[it == Customer]				
+	}
+	
+	on ElectronicPaymentOrder {
+		var Epo = new ArrayList<String>()
+		Epo = occurrence.index
+		Epo.add(Account)
+		Epo.add(Memo)
+		Epo.add(K)
+		Epo.add(Signature)
+		info("Commerciante, Approvazione EPO. " + Epo)
+ 		if(NetbillAlive) {
+			netSpace.emit(new MessageToNetbill(Epo)) // invio una copia a Fourth Part
+			}
+		else {
+			exSpaceNoNetbill.raiseException(new NoNetbill(null), ID)
+		}
+	}
+
+	on AnswerNetbill {
+		Thread.sleep(3000)
+		Message = occurrence.index
+		if(!Wait) {// attendo che il contocorrente si aggiorni
+			info("Commerciante, inoltro il messaggio Netbill al Cliente")
+			//Murderable = false
+			netSpace.emit(new ForwardMessage(Message))
+			netSpace.emit(new NoControl)
+			killMe		
+		}
+		else {
+			info("Merchant muore")
+			killMe //il killMe fa partire l'eccezione
+			//info("Contocorrente commerciante non aggiornato")
+			//exSpaceMerchantBalance.raiseException(new BalanceNotUpdate(null), ID)
+		}
+	}
+
+	on BalanceUpdate {
+		Wait = false
+		info("Contocorrente commerciante aggiornato")
+	}	
+	
+	
+	
+
+	on AgentKilled { //morte improvvisa di un agente
+		if (occurrence.source.getID == FourthAgent) {
+			info("Commerciante, registrata morte Fourth Agent")
+			FourthAlive = false
+		}
+		
+		if (occurrence.source.getID == Netbill) {
+			info("Commerciante, registrata morte Netbill")
+			NetbillAlive = false
+		}
+	
+		//if (Murderable){
+			if (occurrence.source.getID == Customer.getID) {
+				exSpaceCustomerDied.raiseException(new CustomerDeath(null), ID)
+				info("Commerciante si disconette")
+				killMe
+			}
+		}
+	//}
+
+
+
+	on ExceptionSpaceCreated [occurrence.ex == PermissionDenied] { //netbill non permette la transazione
+		exSpaceMerchant = defaultContext.getSpace(occurrence.id)
+		exSpaceMerchant.registerAsHandler(asEventListener)
+		info("Merchant, Registered as handler for PermissionDenied")
+	}
+	on PermissionDenied {
+		info("Commerciante, transazione fallita")
+		netSpace.emit(new TransactionFailed)
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == MoreChecks] { //Fourth Agent blocca la transazione
+		exSpaceMerchantChecks = defaultContext.getSpace(occurrence.id)
+		exSpaceMerchantChecks.registerAsHandler(asEventListener)
+		info("Merchant, Registered as handler for more checks")
+	}
+	on MoreChecks {
+		info("Commerciante, avviso il cliente dell'imprevisto")
+		netSpace.emit(new TransactionFailed)
+		killMe
+	}
+}

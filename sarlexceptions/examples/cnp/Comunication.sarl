@@ -1,0 +1,107 @@
+package newcnp
+
+/** 
+ * @author Andrea
+ * 
+ */
+
+import io.sarl.api.core.Failure
+import io.sarl.lang.core.Address
+import java.util.ArrayList
+
+event NotUnderstood extends Failure {} // il partecipante viene espulso
+
+event NoOffers extends Failure {} // i partecipanti inviano una nuova offerte per proseguire
+
+event Tie extends Failure {} // i partecipanti inviano una nuova offerta per proseguire
+
+event NewTie extends Failure {}
+
+event NotCompleted extends Failure {} //il partecipante viene espulso
+ 
+event Dismiss {
+}
+
+event remove {
+	var index : Address
+
+	new (i : Address) {
+		index = i
+	}
+}
+
+
+event Control {
+}
+
+event NoHandler {}
+
+event Cfp {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+
+event Propose {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+	
+}
+
+event Rematch {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+
+event NewOffer {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+
+
+event Reject_Acept_Proposal {
+
+	val index : int
+
+	new (i : int) {
+		index = i
+	}
+
+}
+
+event Draw {
+	var index = new ArrayList<Address>
+
+	new (i : ArrayList<Address>) {
+		index = i
+	}
+}
+
+event WinnerAndLosers {
+	var index : Address
+
+	new (i : Address) {
+		index = i
+	}
+}
+
+event Taken_charge{}
+

@@ -1,0 +1,112 @@
+package it.unito.di.sarlexceptions.examples.treatment
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import io.sarl.api.core.ParticipantJoined
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.UUID
+import java.util.ArrayList
+
+agent Patient {
+	uses DefaultContextInteractions, Behaviors, Logging, Lifecycle
+	
+	var docSpace : OpenEventSpace
+
+	var Contatore = 0
+	
+	var Claim = new ArrayList<String>
+	
+	var Check : Boolean
+	
+	var sID : String
+	
+	var Symptom : String
+
+	var Message = new ArrayList<String>()
+	
+	var exSpacePatient : ExceptionSpace<Continue>
+
+	var exSpacePatientRemind : ExceptionSpace<Remind>
+
+	var exSpaceTerminate : ExceptionSpace<Terminate>	
+
+	on Initialize {
+		docSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+		occurrence.parameters.get(0) as UUID)
+
+		docSpace.registerStrongParticipant(asEventListener())
+
+		sID = occurrence.parameters.get(1) as String
+		
+		Symptom = occurrence.parameters.get(2) as String
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<Terminate>>
+		exSpaceTerminate = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpaceTerminate.registerAsRaiser(asEventListener)
+		info("Patient, Registered as raiser for Terminate")
+		emit(new ExceptionSpaceCreated(Terminate, exSpaceTerminate.spaceID.ID))
+		
+		
+	}
+
+	on ParticipantJoined [(!isFromMe) && (occurrence.spaceID == docSpace.spaceID)] {
+		Contatore++
+		if (Contatore == 2) {
+			Message.add(sID)
+			Message.add(Symptom)
+			info("il paziente invia il reclamo al Dottore")
+			emit(new Complaint(Message))			
+		}
+	}
+	
+	on Reassurance {
+		killMe
+	}
+	
+	on FilledRx {
+	info("Paziente, prescrizione ricevuta")
+	killMe
+	}
+
+	on Checkpoint {
+		Claim = occurrence.index
+		info("il paziente ha ricevuto il Checkpoit dal Dottore")
+		Check = true //l'assenza farà partire l'eccezione
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == Continue] { 
+		exSpacePatient = defaultContext.getSpace(occurrence.id)
+		exSpacePatient.registerAsHandler(asEventListener)
+		info("Patient, Registered as handler for Continue")
+	}
+	on Continue {
+		if(Check){
+			info("Paziente usa le informazioni lasciate dal dottore per conttatare la farmacia")
+			emit(new Prescription(Claim))
+			}
+		else {
+			info("Non è arrivato il checkpoint")
+			exSpaceTerminate.raiseException(new Terminate(null), ID)
+			killMe
+			}
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == Remind] {
+		exSpacePatientRemind = defaultContext.getSpace(occurrence.id)
+		exSpacePatientRemind.registerAsHandler(asEventListener)
+		info("Patient, Registered as handler for Remind")
+	}
+	on Remind {
+		info("Non è possibile contattare Pharmacist")
+		exSpaceTerminate.raiseException(new Terminate(null), ID)
+		killMe
+	}
+
+}

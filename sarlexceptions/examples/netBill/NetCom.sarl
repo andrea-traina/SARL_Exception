@@ -1,0 +1,140 @@
+/** 
+ * 
+ */
+package net
+
+import java.util.ArrayList
+
+import io.sarl.api.core.Failure
+
+/** 
+ * @author Andrea
+ * 
+ */
+event Richiesta {
+
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event PriceQuote {
+	
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event Verification{
+
+	var index : Integer
+
+	new (i : Integer) {
+		index = i
+	}
+}
+
+event CallbackAgent{
+}
+
+event CallbackNetbill {
+}
+
+event FirstMessage{
+}
+
+event AddressComunication {
+}
+
+event GoodRequest{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event SendingEncripted {
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event ElectronicPaymentOrder{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event MessageToNetbill{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event AnswerNetbill{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event BalanceUpdate {
+
+	var index : String
+	new (i : String) {
+		index = i
+	}
+}
+
+event ForwardMessage {
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event TransactionFailed {}
+
+event PermissionToProceed{}
+
+event NoControl {}
+
+event FourthPart {
+}
+
+event NoHandler
+
+event PermissionDenied extends Failure {} // interrompe l'esecuzione
+
+event Terminate extends Failure {} // interrompe l'esecuzione
+
+event BalanceNotUpdate extends Failure {} // fa inviare di nuovo al nuovo il balance
+
+event CustomerDeath extends Failure {} // interrompe l'esecuzione
+
+event MerchantDeath extends Failure {} // usa un checkpoint per far completare l'operazione ad un altro agente
+
+event MoreChecks extends Failure {} // interrompe l'esecuzione
+
+event NoFourth_Agent extends Failure {} // interrompe l'esecuzione 
+
+event NoNetbill extends Failure {} // interrompe l'esecuzione

@@ -1,0 +1,19 @@
+/** 
+ * 
+ */
+package it.unito.di.sarlexceptions.events
+
+import io.sarl.api.core.Failure
+import java.util.UUID
+
+event ExceptionSpaceCreated {
+	
+	var ex : Class<? extends Failure>
+	var id : UUID
+	
+	new(ex : Class<? extends Failure>, id : UUID) {
+		this.ex = ex
+		this.id = id
+	}
+	
+}

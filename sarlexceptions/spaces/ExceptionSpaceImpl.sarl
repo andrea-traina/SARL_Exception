@@ -1,0 +1,80 @@
+package it.unito.di.sarlexceptions.spaces
+
+import io.sarl.api.core.Failure
+import io.sarl.lang.core.EventListener
+import io.sarl.sre.janus.spaces.OpenLocalEventSpace
+import it.unito.di.sarlexceptions.events.NoHandlerAvailable
+import it.unito.di.sarlexceptions.events.NoSpecificHandlerAvailable
+import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
+import io.sarl.lang.core.Address
+import java.util.HashSet
+
+
+
+class ExceptionSpaceImpl<T extends Failure> extends OpenLocalEventSpace implements ExceptionSpace<T> {
+	
+	
+	var raisers = new CopyOnWriteArrayList<UUID>
+	
+	var handlers = new CopyOnWriteArrayList<UUID>
+
+	var NoDuplicate = new CopyOnWriteArrayList<UUID>
+
+	def registerAsRaiser(listener : EventListener) : void {
+		registerStrongParticipant(listener)
+		raisers.add(listener.getID)
+		//emit(this.spaceID.ID, new ExceptionRaiserRegistered(e, listener.ID))
+	}
+
+	def registerAsHandler(listener : EventListener) : void {
+		registerStrongParticipant(listener)
+		handlers.add(listener.getID)
+		//emit(this.spaceID.ID, new ExceptionHandlerRegistered(e, listener.ID))
+	}
+	
+	
+	def removeHandler(e : T, id : UUID) {
+		//logger.info(e as String)
+		var Eliminated = e.cause as UUID
+		for(handler : handlers) {
+			if(handler == Eliminated){
+				handlers.remove(handler)
+			}
+		}	
+	}
+	
+	def raiseException(e : T, id : UUID) {
+		var address = e.cause as UUID
+		if (raisers.contains(id)) {
+			NoDuplicate = new CopyOnWriteArrayList<UUID>(new HashSet<UUID>(handlers))
+			if (NoDuplicate.isEmpty) {
+				emit(this.spaceID.ID, new NoHandlerAvailable(e.class))[it.getID == id]
+			}
+			else {
+				logger.info("New exception raised: " + e.class.simpleName.toString)
+				if (address === null) {
+					for(handler : NoDuplicate) {
+						emit(id,e)[it.getID == handler]
+					}
+				}
+				else{
+					var control = false
+					for(handler : NoDuplicate) {
+						if (handler == address) {
+							emit(id, e)[it.getID == address]
+							control = true
+						}
+					}
+					if (!control) {
+						emit(this.spaceID.ID, new NoSpecificHandlerAvailable(e.class))[it.getID == id]
+					}
+				}
+			}
+		}
+		else {
+			// TODO: cosa fare se l'eccezione la lancia uno che non e' raiser?
+		}
+	}
+	
+}

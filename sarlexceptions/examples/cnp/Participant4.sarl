@@ -1,0 +1,79 @@
+
+package newcnp
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.UUID
+
+agent Participant4 {
+
+	uses DefaultContextInteractions, Behaviors, Logging, Lifecycle
+
+	var comSpace : OpenEventSpace
+
+	var MIN_VALUE : Integer
+
+	var TIME : Integer
+
+	var exSpace : ExceptionSpace<NotUnderstood>
+
+	var exSpaceNoOffers : ExceptionSpace<NoOffers>
+
+	on Initialize {
+		comSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		comSpace.registerStrongParticipant(asEventListener())
+		MIN_VALUE = occurrence.parameters.get(1) as Integer
+		TIME = occurrence.parameters.get(2) as Integer
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<NotUnderstood>>
+		exSpace = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpace.registerAsRaiser(asEventListener)
+		info("[Participant4] Registered as raiser for NotUnderstood!")
+		emit(new ExceptionSpaceCreated(NotUnderstood, exSpace.spaceID.ID))
+
+	}
+
+	on Cfp {
+		info("Participant4, errore di comunicazione")
+		exSpace.raiseException(new NotUnderstood(occurrence.source.getID), ID)
+		}
+	
+
+	on Reject_Acept_Proposal {
+		if (occurrence.index > 0) {
+			info("Participant4: Mi impegno a svolgere l'incarico")
+			emit(new Taken_charge)
+		} else {
+			info("Participant4: esce")
+		}
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == NoOffers] {
+		exSpaceNoOffers = defaultContext.getSpace(occurrence.id)
+		exSpaceNoOffers.registerAsHandler(asEventListener)
+		info("[Participant4] Registered as handler for NoOffers!")
+	}
+	on NoOffers{
+		info("Participant4: invio nuova offerta")
+		emit(new NewOffer(TIME))
+	}
+
+	on NoHandler {
+		killMe
+	}
+
+	on Dismiss {
+		killMe
+	}
+
+}

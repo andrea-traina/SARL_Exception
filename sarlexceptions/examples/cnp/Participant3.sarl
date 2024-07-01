@@ -1,0 +1,74 @@
+package newcnp
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import java.util.UUID
+
+agent Participant3 {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var exSpaceNoOffers : ExceptionSpace<NoOffers>
+
+	var comSpace : OpenEventSpace
+
+	var MIN_VALUE : Integer
+
+	var TIME : Integer
+
+	on Initialize {
+		comSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		comSpace.registerStrongParticipant(asEventListener())
+		MIN_VALUE = occurrence.parameters.get(1) as Integer
+		TIME = occurrence.parameters.get(2) as Integer
+	}
+
+	on Cfp {
+		info("Participant3: Richiesta ricevuta")
+		if (occurrence.index > MIN_VALUE) {
+			info("Participant3: Invio proposta")
+			comSpace.emit(new Propose(TIME))[it == occurrence.source]
+		} else {
+			info("Participant3: Richiesta rifiutata")
+			comSpace.emit(new Propose(-1))[it == occurrence.source]
+		}
+	}
+
+	on Reject_Acept_Proposal {
+		if (occurrence.index > 0) {
+			info("Participant3: Mi impegno a svolgere l'incarico")
+			emit(new Taken_charge)
+		} else {
+			info("Participant3: esce")
+		}
+		killMe
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == NoOffers] {
+		exSpaceNoOffers = defaultContext.getSpace(occurrence.id)
+		exSpaceNoOffers.registerAsHandler(asEventListener)
+		info("[Participant3] Registered as handler for NoOffers!")
+	}
+	on NoOffers {
+		info("Participant3: invio nuova offerta")
+		comSpace.emit(new NewOffer(TIME))
+	}
+
+	on NoHandler {
+		killMe
+	}
+
+	on Dismiss {
+		killMe
+	}
+
+}

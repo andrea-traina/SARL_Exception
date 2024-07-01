@@ -1,0 +1,145 @@
+package primenet
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import io.sarl.api.core.ParticipantJoined
+import io.sarl.api.core.Schedules
+import java.util.UUID
+import java.util.ArrayList
+import io.sarl.lang.core.Address
+
+agent Customer {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var Name : String
+
+	var Merchant : Address
+
+	var AccountNumber : String
+
+	var netspace : OpenEventSpace
+
+	var Credenziali : String
+
+	var PRD : String
+
+	var Bid : Integer
+
+	var RequestFlag : String
+
+	var Epo = new ArrayList<String>()
+
+	var Ecm = new ArrayList<String>()
+
+	var OfferList = new ArrayList<String>()
+
+	var EndWait = false
+
+	on Initialize {
+		netspace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+
+		netspace.registerStrongParticipant(asEventListener())
+
+		Credenziali = occurrence.parameters.get(1) as String
+		Ecm.add(Credenziali)
+		
+		PRD = occurrence.parameters.get(2) as String
+		Ecm.add(PRD)
+		
+		Bid = occurrence.parameters.get(3) as Integer
+		//Ecm.add(Bid) offerta opzionale
+		
+		RequestFlag = occurrence.parameters.get(4) as String
+		Ecm.add(RequestFlag)
+
+		Name = occurrence.parameters.get(5) as String
+		Ecm.add(Name)
+
+		AccountNumber = occurrence.parameters.get(6) as String
+
+		info("Cliente " + Ecm)
+		
+	}
+
+	on ParticipantJoined [(!isFromMe) && (occurrence.spaceID == netspace.spaceID)] {
+		if (netspace.getNumberOfStrongParticipants == 3) {
+			Starting
+		}
+	}
+
+	val lockObj = new Object
+
+	def Starting : void {
+		synchronized (lockObj) {
+			if (!EndWait) {
+				EndWait = true
+				var evt = new Richiesta(Ecm) // cliente invia richiesta
+				evt.source = netspace.getAddress(getID())
+				netspace.emit(evt)
+			}
+		}
+	}
+
+	on PriceQuote {
+		Merchant = occurrence.source
+		OfferList = occurrence.index
+		var Offerta = Integer.valueOf(OfferList.get(1))
+		var response = new ArrayList<String>()
+		if (Offerta > Bid) {
+			info("Cliente, offerta rifiutata")
+			response.add("refuse")
+			response.add(OfferList.get(3))
+			response.add(Name)
+			netspace.emit(new GoodRequest(response))[it == occurrence.source]
+		} else {
+			info("Cliente, offerta accettata")
+			response.add("accept")
+			response.add(OfferList.get(3))
+			response.add(Name)
+			info("Cliente, richiede la merce. " + response)
+			netspace.emit(new GoodRequest(response))[it == occurrence.source]
+		}
+	}
+
+	on SendingEncripted {
+		var data = new ArrayList<String>()
+		var C_PRD = new String(PRD)
+		C_PRD = "Checksum criptografato del PRD"
+
+		var C_Account = new String(AccountNumber)
+		C_Account = "Checksum criptografato dell'account number"
+
+		data = occurrence.index
+		Epo.add(OfferList.get(0))
+		Epo.add(OfferList.get(1))
+		Epo.add(data.get(1))
+		Epo.add(C_PRD)
+		Epo.add(C_Account)
+		Epo.add(data.get(2))
+		Epo.add(Name)
+		Epo.add(OfferList.get(4))
+		Epo.add("parte criptata") 
+		info("Cliente, Signed Electronic Payment Order. " + Epo)
+		netspace.emit(new ElectronicPaymentOrder(Epo))
+
+	}
+
+	on ForwardMessage {
+		info("Cliente, messagio Netbill ricevuto")
+		killMe
+	}
+
+	on TransactionFailed {
+		info("Cliente, transazione fallita")
+		killMe
+	}
+
+}	

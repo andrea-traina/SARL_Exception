@@ -1,0 +1,116 @@
+package newcnp
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import java.util.UUID
+
+agent Participant1b {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var comSpace : OpenEventSpace
+	var exSpaceTie : ExceptionSpace<Tie>
+	var exSpaceNewTie : ExceptionSpace<NewTie>
+	var exSpaceNoOffers : ExceptionSpace<NoOffers>
+
+	var MIN_VALUE : Integer
+
+	var TIME : Integer
+
+	var NewTIME : Integer
+
+	var cont1 = 0
+	var cont2 = 0
+
+	on Initialize {
+		comSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+		comSpace.registerStrongParticipant(asEventListener())
+		MIN_VALUE = occurrence.parameters.get(1) as Integer
+		TIME = occurrence.parameters.get(2) as Integer
+	}
+
+	on Cfp {
+		info("Participant1b: Richiesta ricevuta")
+		if (occurrence.index > MIN_VALUE) {
+			info("Participant1b: Invio proposta")
+			comSpace.emit(new Propose(TIME))[it == occurrence.source]
+		} else {
+			info("Participant1b: Richiesta rifiutata")
+			comSpace.emit(new Propose(-1))[it == occurrence.source]
+		}
+	}
+
+	on Reject_Acept_Proposal {
+		if (occurrence.index > 0) {
+			info("Participant1b: Mi impegno a svolgere l'incarico")
+			emit(new Taken_charge)
+		}
+		else {
+			info("Participant1b: esce")
+			killMe
+		}
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == Tie] {
+		exSpaceTie = defaultContext.getSpace(occurrence.id)
+		exSpaceTie.registerAsHandler(asEventListener)
+		info("[Participant1b] Registered as handler for Tie!")
+	}
+
+	on Tie {
+		info("Participant1b: invio nuova offerta")
+		TIME = TIME * 90 / 100
+		cont1 ++
+		if (TIME < 100) {
+			emit(new Rematch(100))
+		} else {
+			emit(new Rematch(TIME))
+		}
+	}
+
+	on ExceptionSpaceCreated [occurrence.ex == NewTie] {
+		exSpaceNewTie = defaultContext.getSpace(occurrence.id)
+		exSpaceNewTie.registerAsHandler(asEventListener)
+		info("[Participant1b] Registered as handler for NewTie!")
+	}
+
+	on NewTie {
+		info("Participant1b: invio nuovamente offerta")
+		if(cont2 == cont1){
+			TIME = TIME * 90 / 100
+		}
+		if (TIME < 100) {
+			emit(new Rematch(100))
+		} else {
+			emit(new Rematch(TIME))
+		}
+	}
+	
+	on ExceptionSpaceCreated [occurrence.ex == NoOffers] {
+		exSpaceNoOffers = defaultContext.getSpace(occurrence.id)
+		exSpaceNoOffers.registerAsHandler(asEventListener)
+		info("[Participant1b] Registered as handler for NoOffers!")
+	}
+	on NoOffers{
+		info("Participant1b: invio nuova offerta")
+		comSpace.emit(new NewOffer(TIME))
+	}
+
+	on NoHandler {
+		killMe
+	}
+
+	on Dismiss {
+		killMe
+	}
+
+}

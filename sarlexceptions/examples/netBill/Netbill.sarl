@@ -1,0 +1,200 @@
+package net
+
+import io.sarl.api.core.Behaviors
+import io.sarl.api.core.DefaultContextInteractions
+import io.sarl.api.core.ExternalContextAccess
+import io.sarl.api.core.Initialize
+import io.sarl.api.core.Lifecycle
+import io.sarl.api.core.Logging
+import io.sarl.api.core.OpenEventSpace
+import io.sarl.api.core.OpenEventSpaceSpecification
+import java.util.ArrayList
+import it.unito.di.sarlexceptions.events.ExceptionSpaceCreated
+import it.unito.di.sarlexceptions.spaces.ExceptionSpace
+import it.unito.di.sarlexceptions.spaces.ExceptionSpaceSpecification
+import java.util.UUID
+import io.sarl.api.core.AgentKilled
+import io.sarl.lang.core.Address
+import it.unito.di.sarlexceptions.events.NoHandlerAvailable
+import it.unito.di.sarlexceptions.events.NoSpecificHandlerAvailable
+
+
+
+agent Netbill {
+
+	uses DefaultContextInteractions, Behaviors, Logging, ExternalContextAccess, Lifecycle
+
+	var netSpace : OpenEventSpace
+
+	var Authorized =  false //solo gli utenti autorizzati possono usare un conto net bill
+	
+	var Signature : String
+	
+	var Balance : String
+	
+	var Merchant : UUID
+
+	var Handler : UUID
+
+	var exSpaceNetBill : ExceptionSpace<PermissionDenied>
+	
+	var exSpaceNetBillBalance : ExceptionSpace<BalanceNotUpdate>
+
+	var exSpaceContinue : ExceptionSpace<MerchantDeath>
+
+	var exspaceCustomerDeath : ExceptionSpace<CustomerDeath>
+
+	var exSpaceNoAgent : ExceptionSpace<NoFourth_Agent>
+	
+	var exSpaceTerminate : ExceptionSpace<Terminate>
+
+	var RisultatoFirmato = new ArrayList<String>()
+	
+
+	on Initialize {
+		netSpace = defaultContext.getOrCreateSpaceWithSpec(typeof(OpenEventSpaceSpecification),
+			occurrence.parameters.get(0) as UUID)
+
+		netSpace.registerStrongParticipant(asEventListener())
+
+		Signature = occurrence.parameters.get(1) as String
+
+		val type = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<PermissionDenied>>
+		exSpaceNetBill = defaultContext.getOrCreateSpaceWithID(type, UUID::randomUUID)
+		exSpaceNetBill.registerAsRaiser(asEventListener)
+		info("Netbill, Registered as raiser for Permission Denied")
+		emit(new ExceptionSpaceCreated(PermissionDenied, exSpaceNetBill.spaceID.ID))
+
+		val type2 = new ExceptionSpaceSpecification.class as Class<ExceptionSpaceSpecification<MerchantDeath>>
+		exSpaceContinue = defaultContext.getOrCreateSpaceWithID(type2, UUID::randomUUID)
+		exSpaceContinue.registerAsRaiser(asEventListener)
+		info("Netbill, Registered as raiser for Merchant death")
+		emit(new ExceptionSpaceCreated(MerchantDeath, exSpaceContinue.spaceID.ID))
+
+	}
+
+	on AddressComunication {
+		Handler = occurrence.source.getID
+	}
+
+	on FirstMessage {
+		Merchant = occurrence.source.getID
+		netSpace.emit(new CallbackNetbill)[it == occurrence.source]
+	}
+
+	on MessageToNetbill {
+		
+		
+			var esito = "Esito positivo"
+			RisultatoFirmato.add(esito)
+
+			var Commerciante = occurrence.index.get(6)
+			RisultatoFirmato.add(Commerciante)
+
+			var Cliente = occurrence.index.get(7)
+			RisultatoFirmato.add(Cliente)
+			Authorized = true //se omesso fa partire l'eccezione
+			
+			var prezzo = occurrence.index.get(1)
+			RisultatoFirmato.add(prezzo)
+				
+			var descrizione = occurrence.index.get(0)
+			RisultatoFirmato.add(descrizione)
+			
+			var EPOID = occurrence.index.get(5)
+			RisultatoFirmato.add(EPOID)
+			
+			var chiaveK = occurrence.index.get(11)
+			RisultatoFirmato.add(chiaveK)
+			
+			RisultatoFirmato.add(Signature)
+
+		if (Authorized) {
+			info("NetBill, risultato firmato. " + RisultatoFirmato)
+
+			Balance = "nuovo saldo contocorrente"
+			
+			//netSpace.emit(new BalanceUpdate("bilancio")) // senza faccio partire l'eccezione
+
+			netSpace.emit(new AnswerNetbill(RisultatoFirmato)) [it == occurrence.source]
+			
+		}
+		else {
+				exSpaceNetBill.raiseException(new PermissionDenied(null), ID)// [it.getID == occurrence.source.getID]
+		}
+	}
+	
+	on ForwardMessage {
+		killMe
+	}
+	
+	on TransactionFailed {
+		info("Netbill, transazione fallita")
+		killMe
+	}
+
+
+
+	on ExceptionSpaceCreated [occurrence.ex == BalanceNotUpdate] {
+			exSpaceNetBillBalance = defaultContext.getSpace(occurrence.id)
+			exSpaceNetBillBalance.registerAsHandler(asEventListener)
+			info("Netbill, Registered as handler for Balance Not Update")
+	}
+	on BalanceNotUpdate {
+		netSpace.emit(new BalanceUpdate("bilancio"))[it.getID == occurrence.source.getID]
+		netSpace.emit(new AnswerNetbill(RisultatoFirmato))[it.getID == occurrence.source.getID]
+	}
+
+
+
+	on ExceptionSpaceCreated [occurrence.ex == CustomerDeath] {
+		exspaceCustomerDeath = defaultContext.getSpace(occurrence.id)
+		exspaceCustomerDeath.registerAsHandler(asEventListener)
+		info("Netbill, Registered as handler for CustomerDeath")
+	}
+	on CustomerDeath{
+		info("Netbill, si sconette")
+		killMe
+	}
+
+
+
+	on ExceptionSpaceCreated [occurrence.ex == NoFourth_Agent] {
+		exSpaceNoAgent = defaultContext.getSpace(occurrence.id)
+		exSpaceNoAgent.registerAsHandler(asEventListener)
+		info("Netbill, Registered as handler for absence of Fourth Agent")
+		}
+	on NoFourth_Agent{
+		info("Netbill, si sconnette")
+		killMe
+	}
+
+
+	on AgentKilled {
+		if (occurrence.source.getID == Merchant) {
+			exSpaceContinue.raiseException(new MerchantDeath(null), ID)
+		}
+		//if (occurrence.source.getID == Handler) {
+		//	exSpaceContinue.removeHandler(new MerchantDeath(Handler), ID)
+		//}
+	}
+	
+	
+	
+	on NoHandlerAvailable {
+		netSpace.emit(new NoHandler)
+		killMe
+	}
+	
+	
+	on ExceptionSpaceCreated [occurrence.ex == Terminate] {
+		exSpaceTerminate = defaultContext.getSpace(occurrence.id)
+		exSpaceTerminate.registerAsHandler(asEventListener)
+		info("Netbill, Registered as handler for Terminate")
+		}
+	on Terminate {
+		info("Netbill, si sconnette")
+		killMe
+	}
+
+}

@@ -1,0 +1,96 @@
+/** 
+ * 
+ */
+package primenet
+
+import java.util.ArrayList
+
+/** 
+ * @author Andrea
+ * 
+ */
+ 
+event TransactionFailed {}
+
+event PermissionToProceed {}
+
+
+event Richiesta {
+
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event PriceQuote {
+	
+	var index = new ArrayList<String>
+	
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event GoodRequest{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event SendingEncripted {
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event ElectronicPaymentOrder{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event MessageToNetbill{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event AnswerNetbill{
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
+
+event BalanceUpdate {
+
+	var index : String
+	new (i : String) {
+		index = i
+	}
+}
+
+event ForwardMessage {
+
+	var index = new ArrayList<String>
+
+	new (i : ArrayList<String>) {
+		index = i
+	}
+}
